@@ -88,10 +88,29 @@ export default function App() {
     };
   }, [userSnapshots, userAccounts]);
 
+  // Merge-by-accountId semantics on same-date collision so a partial
+  // submission (e.g. only 支付宝) does not wipe the other accounts already
+  // recorded in today's snapshot.
   const appendSnapshot = React.useCallback((snap) => {
     setUserSnapshots(prev => {
-      const filtered = prev.filter(s => s.date !== snap.date);
-      return [...filtered, snap].sort((a, b) => a.date.localeCompare(b.date));
+      const existing = prev.find(s => s.date === snap.date);
+      let merged = snap;
+      if (existing) {
+        const entriesById = new Map();
+        existing.entries.forEach(e => entriesById.set(e.accountId, e));
+        snap.entries.forEach(e => entriesById.set(e.accountId, e));
+        const existingNotes = existing.notes || [];
+        const newNotes = snap.notes || [];
+        const notesById = new Map();
+        existingNotes.forEach(n => notesById.set(n.accountId, n));
+        newNotes.forEach(n => notesById.set(n.accountId, n));
+        merged = {
+          date: snap.date,
+          entries: Array.from(entriesById.values()),
+          notes: notesById.size > 0 ? Array.from(notesById.values()) : undefined,
+        };
+      }
+      return [...prev.filter(s => s.date !== snap.date), merged].sort((a, b) => a.date.localeCompare(b.date));
     });
   }, []);
 
@@ -142,11 +161,12 @@ export default function App() {
     const remoteAccs = parsed.userAccounts;
     setUserSnapshots(remoteSnaps);
     if (remoteAccs) setUserAccounts(remoteAccs);
-    // Mark this state as synced so auto-push won't immediately re-push it
-    lastSyncedBytesRef.current = JSON.stringify({
+    const syncedBytes = JSON.stringify({
       userSnapshots: remoteSnaps,
       userAccounts: remoteAccs !== undefined ? remoteAccs : userAccounts,
     });
+    lastSyncedBytesRef.current = syncedBytes;
+    localStorage.setItem('ledger.lastSyncedState', syncedBytes);
     return { sha: r.sha, count: remoteSnaps.length };
   }, [githubConfig, githubToken, userAccounts]);
 
@@ -165,24 +185,45 @@ export default function App() {
       sha,
       message: commitMessage,
     });
+    const syncedBytes = JSON.stringify({ userSnapshots: snapsToPush, userAccounts: accsToPush });
     localStorage.setItem('ledger.lastPushAt', new Date().toISOString());
-    lastSyncedBytesRef.current = JSON.stringify({ userSnapshots: snapsToPush, userAccounts: accsToPush });
+    localStorage.setItem('ledger.lastSyncedState', syncedBytes);
+    lastSyncedBytesRef.current = syncedBytes;
     return { commitUrl: res.commit?.html_url };
   }, [githubConfig, githubToken, userSnapshots, userAccounts]);
 
   const canSync = !!(githubConfig.owner && githubConfig.repo && githubConfig.path && githubToken);
 
-  // Auto-pull once on mount (if autoSync + canSync)
+  // One-shot sync on mount: if local has unpushed changes (from prior
+  // session) push them; otherwise pull remote to freshen up. This prevents
+  // auto-pull from wiping out edits that happened before the auto-push
+  // debounce window fired (e.g. user saves then immediately refreshes).
   const didAutoPullRef = React.useRef(false);
   React.useEffect(() => {
     if (!autoSync || !canSync || didAutoPullRef.current) return;
     didAutoPullRef.current = true;
     (async () => {
+      const currentBytes = JSON.stringify({ userSnapshots, userAccounts });
+      const lastSynced = localStorage.getItem('ledger.lastSyncedState');
+      const hasLocalChanges = lastSynced !== null && lastSynced !== currentBytes;
+
+      if (hasLocalChanges) {
+        setSyncStatus('pushing');
+        try {
+          await githubPush('auto: flush pending changes on load');
+          setSyncStatus('synced');
+          setSyncError(null);
+        } catch (e) {
+          setSyncStatus('error');
+          setSyncError(e.message);
+        }
+        return;
+      }
+
       setSyncStatus('pulling');
       try {
         const r = await githubPull();
         if (r.notFound) {
-          // Remote file doesn't exist yet → push local as initial
           setSyncStatus('pushing');
           await githubPush('auto: initial ledger');
         }
