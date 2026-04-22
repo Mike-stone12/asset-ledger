@@ -5,6 +5,7 @@ import { githubCheckRepo } from '../lib/github';
 export default function SettingsView({
   data, githubConfig, setGithubConfig, githubToken, setGithubToken,
   githubPull, githubPush, setUserSnapshots, setUserAccounts,
+  autoSync, setAutoSync, syncStatus, syncError,
 }) {
   const [testing, setTesting] = React.useState(false);
   const [pulling, setPulling] = React.useState(false);
@@ -168,6 +169,26 @@ export default function SettingsView({
             {status.link && <a href={status.link} target="_blank" rel="noopener" className="status-link">查看 commit →</a>}
           </div>
         )}
+
+        <div className="auto-sync-row">
+          <label className="auto-sync-toggle">
+            <input type="checkbox" checked={autoSync} onChange={e => setAutoSync(e.target.checked)} disabled={!canSync} />
+            <span className="auto-sync-title">自动同步</span>
+            <span className="auto-sync-sub muted">
+              打开网页时自动从 GitHub 拉取 · 本地改动 3 秒后自动推送
+              {!canSync && '（需先完成上面的配置）'}
+            </span>
+          </label>
+          {autoSync && canSync && (
+            <div className={`auto-sync-status status-${syncStatus === 'error' ? 'err' : syncStatus === 'synced' ? 'ok' : 'warn'}`}>
+              {syncStatus === 'pulling' && '正在拉取远端...'}
+              {syncStatus === 'pushing' && '正在推送...'}
+              {syncStatus === 'synced' && '✓ 已同步'}
+              {syncStatus === 'error' && `✗ ${syncError || '同步失败'}`}
+              {syncStatus === 'idle' && '待命'}
+            </div>
+          )}
+        </div>
 
         <div className="settings-meta">
           <span className="muted">最近推送：</span>

@@ -43,11 +43,27 @@ export default function App() {
     localStorage.setItem('ledger.githubConfig', JSON.stringify(githubConfig));
   }, [githubConfig]);
 
-  const [githubToken, setGithubToken] = React.useState(() => sessionStorage.getItem('ledger.githubToken') || '');
+  const [githubToken, setGithubToken] = React.useState(() => {
+    return sessionStorage.getItem('ledger.githubToken') || localStorage.getItem('ledger.githubToken') || '';
+  });
   React.useEffect(() => {
     if (githubToken) sessionStorage.setItem('ledger.githubToken', githubToken);
     else sessionStorage.removeItem('ledger.githubToken');
   }, [githubToken]);
+
+  // Auto sync: pull once on mount, debounced push on change
+  const [autoSync, setAutoSync] = React.useState(() => localStorage.getItem('ledger.autoSync') === '1');
+  React.useEffect(() => {
+    localStorage.setItem('ledger.autoSync', autoSync ? '1' : '0');
+  }, [autoSync]);
+
+  // sync status: 'idle' | 'pulling' | 'pushing' | 'synced' | 'error'
+  const [syncStatus, setSyncStatus] = React.useState('idle');
+  const [syncError, setSyncError] = React.useState(null);
+  // Stringified { userSnapshots, userAccounts } as of the last known remote state.
+  // When local diverges, auto-push fires (debounced). After push/pull, updated to
+  // match the newly synced payload so we don't re-push unchanged data.
+  const lastSyncedBytesRef = React.useRef(null);
 
   const data = React.useMemo(() => {
     const byDate = new Map();
@@ -122,11 +138,17 @@ export default function App() {
     const r = await githubFetchContents({ ...githubConfig, token: githubToken });
     if (r.notFound) return { notFound: true };
     const parsed = JSON.parse(r.content);
-    const remote = Array.isArray(parsed) ? parsed : (parsed.userSnapshots || parsed.snapshots || []);
-    setUserSnapshots(remote);
-    if (parsed.userAccounts) setUserAccounts(parsed.userAccounts);
-    return { sha: r.sha, count: remote.length };
-  }, [githubConfig, githubToken]);
+    const remoteSnaps = Array.isArray(parsed) ? parsed : (parsed.userSnapshots || parsed.snapshots || []);
+    const remoteAccs = parsed.userAccounts;
+    setUserSnapshots(remoteSnaps);
+    if (remoteAccs) setUserAccounts(remoteAccs);
+    // Mark this state as synced so auto-push won't immediately re-push it
+    lastSyncedBytesRef.current = JSON.stringify({
+      userSnapshots: remoteSnaps,
+      userAccounts: remoteAccs !== undefined ? remoteAccs : userAccounts,
+    });
+    return { sha: r.sha, count: remoteSnaps.length };
+  }, [githubConfig, githubToken, userAccounts]);
 
   const githubPush = React.useCallback(async (commitMessage, overrides = {}) => {
     const existing = await githubFetchContents({ ...githubConfig, token: githubToken });
@@ -144,8 +166,58 @@ export default function App() {
       message: commitMessage,
     });
     localStorage.setItem('ledger.lastPushAt', new Date().toISOString());
+    lastSyncedBytesRef.current = JSON.stringify({ userSnapshots: snapsToPush, userAccounts: accsToPush });
     return { commitUrl: res.commit?.html_url };
   }, [githubConfig, githubToken, userSnapshots, userAccounts]);
+
+  const canSync = !!(githubConfig.owner && githubConfig.repo && githubConfig.path && githubToken);
+
+  // Auto-pull once on mount (if autoSync + canSync)
+  const didAutoPullRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!autoSync || !canSync || didAutoPullRef.current) return;
+    didAutoPullRef.current = true;
+    (async () => {
+      setSyncStatus('pulling');
+      try {
+        const r = await githubPull();
+        if (r.notFound) {
+          // Remote file doesn't exist yet → push local as initial
+          setSyncStatus('pushing');
+          await githubPush('auto: initial ledger');
+        }
+        setSyncStatus('synced');
+        setSyncError(null);
+      } catch (e) {
+        setSyncStatus('error');
+        setSyncError(e.message);
+      }
+    })();
+  }, [autoSync, canSync, githubPull, githubPush]);
+
+  // Debounced auto-push when local diverges from last synced state
+  React.useEffect(() => {
+    if (!autoSync || !canSync) return;
+    // Initialize baseline on first render so we don't push unchanged state
+    if (lastSyncedBytesRef.current === null) {
+      lastSyncedBytesRef.current = JSON.stringify({ userSnapshots, userAccounts });
+      return;
+    }
+    const currentBytes = JSON.stringify({ userSnapshots, userAccounts });
+    if (currentBytes === lastSyncedBytesRef.current) return;
+    const t = setTimeout(async () => {
+      setSyncStatus('pushing');
+      try {
+        await githubPush('auto: update ledger');
+        setSyncStatus('synced');
+        setSyncError(null);
+      } catch (e) {
+        setSyncStatus('error');
+        setSyncError(e.message);
+      }
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [userSnapshots, userAccounts, autoSync, canSync, githubPush]);
 
   // Persist view
   React.useEffect(() => {
@@ -201,13 +273,16 @@ export default function App() {
           theme={theme}
           baseCurrency={baseCurrency}
           onCurrencyChange={setBaseCurrency}
+          syncStatus={autoSync && canSync ? syncStatus : 'off'}
+          syncError={syncError}
+          onOpenSettings={() => navigate('settings')}
         />
         {view.name === 'dashboard' && <DashboardView data={data} baseCurrency={baseCurrency} onNavigate={navigate} />}
         {view.name === 'category' && <CategoryView data={data} categoryKey={view.params} baseCurrency={baseCurrency} onNavigate={navigate} appendSnapshot={appendSnapshot} removeUserSnapshot={removeUserSnapshot} />}
         {view.name === 'add' && <AddSnapshotView data={data} baseCurrency={baseCurrency} onNavigate={navigate} appendSnapshot={appendSnapshot} githubPush={githubPush} githubConfig={githubConfig} />}
         {view.name === 'export' && <ExportView data={data} baseCurrency={baseCurrency} />}
         {view.name === 'accounts' && <AccountsView data={data} baseCurrency={baseCurrency} upsertAccount={upsertAccount} archiveAccount={archiveAccount} deleteAccount={deleteAccount} onNavigate={navigate} />}
-        {view.name === 'settings' && <SettingsView data={data} githubConfig={githubConfig} setGithubConfig={setGithubConfig} githubToken={githubToken} setGithubToken={setGithubToken} githubPull={githubPull} githubPush={githubPush} setUserSnapshots={setUserSnapshots} setUserAccounts={setUserAccounts} />}
+        {view.name === 'settings' && <SettingsView data={data} githubConfig={githubConfig} setGithubConfig={setGithubConfig} githubToken={githubToken} setGithubToken={setGithubToken} githubPull={githubPull} githubPush={githubPush} setUserSnapshots={setUserSnapshots} setUserAccounts={setUserAccounts} autoSync={autoSync} setAutoSync={setAutoSync} syncStatus={syncStatus} syncError={syncError} />}
       </div>
     </div>
   );
