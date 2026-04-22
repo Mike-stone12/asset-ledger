@@ -10,12 +10,12 @@ export const toBase = (amount, currency) => amount * (MOCK_DATA.fx[currency] ?? 
 export const fromBase = (baseAmount, targetCurrency) => baseAmount / (MOCK_DATA.fx[targetCurrency] ?? 1);
 
 export const totalOfSnapshot = (snap) =>
-  snap.entries.reduce((acc, e) => acc + toBase(e.amount, e.currency), 0);
+  (snap?.entries || []).reduce((acc, e) => acc + toBase(e.amount, e.currency), 0);
 
 export const categoryTotalsOfSnapshot = (snap) => {
   const out = {};
   Object.keys(CATEGORIES).forEach((k) => (out[k] = 0));
-  snap.entries.forEach((e) => {
+  (snap?.entries || []).forEach((e) => {
     const cat = CATEGORIES[e.category] ? e.category : 'other';
     out[cat] = (out[cat] || 0) + toBase(e.amount, e.currency);
   });
