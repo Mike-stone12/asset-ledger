@@ -5,7 +5,21 @@ import { totalOfSnapshot, categoryTotalsOfSnapshot, fmtNum, fmtPct, fmtDate } fr
 
 const PROFILE_DEFAULTS = { age: '30', risk: '中等', horizon: '长期', notes: '' };
 
-export default function ExportView({ data, baseCurrency }) {
+export default function ExportView(props) {
+  if (props.data.snapshots.length === 0) {
+    return (
+      <div className="view export-view">
+        <section className="empty-state" style={{ padding: 64, background: 'var(--bg-elev)', borderRadius: 12 }}>
+          <Icon name="doc" size={32} />
+          <div>还没有任何快照，无法导出</div>
+        </section>
+      </div>
+    );
+  }
+  return <ExportImpl {...props} />;
+}
+
+function ExportImpl({ data, baseCurrency }) {
   const { snapshots } = data;
   const [active, setActive] = React.useState('json');
   const [copied, setCopied] = React.useState(false);

@@ -8,7 +8,34 @@ import KpiMini from '../components/KpiMini';
 import { CATEGORIES } from '../data/categories';
 import { totalOfSnapshot, categoryTotalsOfSnapshot, rangeFilter, fromBase, symbolOf, fmtNum, fmtDate, fmtPct } from '../lib/utils';
 
-export default function DashboardView({ data, baseCurrency, onNavigate }) {
+export default function DashboardView(props) {
+  if (props.data.snapshots.length === 0) return <EmptyDashboard onNavigate={props.onNavigate} />;
+  return <DashboardImpl {...props} />;
+}
+
+function EmptyDashboard({ onNavigate }) {
+  return (
+    <div className="view dashboard">
+      <section className="empty-welcome">
+        <div className="empty-welcome-icon">
+          <Icon name="dashboard" size={32} />
+        </div>
+        <h2>开始记录你的资产</h2>
+        <p>两步即可开始使用：先在「账户管理」里创建你的账户（银行、券商、交易所等），再去「新增快照」录入当前余额。</p>
+        <div className="empty-welcome-steps">
+          <button className="btn-primary" onClick={() => onNavigate('accounts')}>
+            <Icon name="users" size={14} /> 先去添加账户
+          </button>
+          <button className="btn-secondary" onClick={() => onNavigate('add')}>
+            <Icon name="plus" size={14} /> 或直接新增快照
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DashboardImpl({ data, baseCurrency, onNavigate }) {
   const { snapshots, accounts } = data;
   const [range, setRange] = React.useState('1Y');
   const [visibleCats, setVisibleCats] = React.useState({});

@@ -103,6 +103,21 @@ export default function App() {
     });
   }, []);
 
+  // Permanent delete: removes account from userAccounts AND strips
+  // its entries from every snapshot. Mock accounts (if any in MOCK_DATA)
+  // cannot be truly purged because MOCK_DATA is static — they'd re-appear
+  // on next load. Since MOCK_DATA is empty, this is effectively total removal.
+  const deleteAccount = React.useCallback((id) => {
+    setUserAccounts(prev => prev.filter(a => a.id !== id));
+    setUserSnapshots(prev => prev
+      .map(s => ({
+        ...s,
+        entries: s.entries.filter(e => e.accountId !== id),
+        notes: s.notes ? s.notes.filter(n => n.accountId !== id) : undefined,
+      }))
+      .filter(s => s.entries.length > 0));
+  }, []);
+
   const githubPull = React.useCallback(async () => {
     const r = await githubFetchContents({ ...githubConfig, token: githubToken });
     if (r.notFound) return { notFound: true };
@@ -191,7 +206,7 @@ export default function App() {
         {view.name === 'category' && <CategoryView data={data} categoryKey={view.params} baseCurrency={baseCurrency} onNavigate={navigate} appendSnapshot={appendSnapshot} removeUserSnapshot={removeUserSnapshot} />}
         {view.name === 'add' && <AddSnapshotView data={data} baseCurrency={baseCurrency} onNavigate={navigate} appendSnapshot={appendSnapshot} githubPush={githubPush} githubConfig={githubConfig} />}
         {view.name === 'export' && <ExportView data={data} baseCurrency={baseCurrency} />}
-        {view.name === 'accounts' && <AccountsView data={data} baseCurrency={baseCurrency} upsertAccount={upsertAccount} archiveAccount={archiveAccount} onNavigate={navigate} />}
+        {view.name === 'accounts' && <AccountsView data={data} baseCurrency={baseCurrency} upsertAccount={upsertAccount} archiveAccount={archiveAccount} deleteAccount={deleteAccount} onNavigate={navigate} />}
         {view.name === 'settings' && <SettingsView data={data} githubConfig={githubConfig} setGithubConfig={setGithubConfig} githubToken={githubToken} setGithubToken={setGithubToken} githubPull={githubPull} githubPush={githubPush} setUserSnapshots={setUserSnapshots} setUserAccounts={setUserAccounts} />}
       </div>
     </div>

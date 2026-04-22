@@ -993,7 +993,7 @@ input, select { font-family: inherit; color: inherit; }
 }
 .mgr-head, .mgr-row {
   display: grid;
-  grid-template-columns: 2fr 1fr 80px 140px 140px 90px 180px;
+  grid-template-columns: 2fr 1fr 80px 140px 140px 90px 260px;
   gap: 14px;
   align-items: center;
   padding: 12px 20px;
@@ -1031,6 +1031,27 @@ input, select { font-family: inherit; color: inherit; }
   color: var(--text-dim); font-size: 13px;
   display: flex; flex-direction: column; align-items: center; gap: 12px;
 }
+
+.empty-welcome {
+  padding: 80px 32px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  box-shadow: var(--shadow-sm);
+}
+.empty-welcome-icon {
+  width: 64px; height: 64px;
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--pos) 10%, transparent);
+  color: var(--pos);
+  display: grid; place-items: center;
+  margin-bottom: 4px;
+}
+.empty-welcome h2 { margin: 0; font-size: 22px; letter-spacing: -0.02em; font-weight: 600; }
+.empty-welcome p { margin: 0; font-size: 14px; color: var(--text-muted); max-width: 520px; line-height: 1.6; }
+.empty-welcome-steps { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; justify-content: center; }
 
 /* ───────── Settings view ───────── */
 .settings-section {

@@ -9,7 +9,24 @@ import { CATEGORIES } from '../data/categories';
 import { MOCK_DATA } from '../data/mockData';
 import { totalOfSnapshot, categoryTotalsOfSnapshot, rangeFilter, toBase, fromBase, symbolOf, fmtNum, fmtDate } from '../lib/utils';
 
-export default function CategoryView({ data, categoryKey, baseCurrency, onNavigate, appendSnapshot, removeUserSnapshot }) {
+export default function CategoryView(props) {
+  if (props.data.snapshots.length === 0) {
+    return (
+      <div className="view category-view">
+        <section className="empty-state" style={{ padding: 64, background: 'var(--bg-elev)', borderRadius: 12 }}>
+          <Icon name="folder" size={32} />
+          <div>还没有任何快照，先去「新增快照」录入</div>
+          <button className="btn-primary" onClick={() => props.onNavigate('add')}>
+            <Icon name="plus" size={14} /> 新增快照
+          </button>
+        </section>
+      </div>
+    );
+  }
+  return <CategoryImpl {...props} />;
+}
+
+function CategoryImpl({ data, categoryKey, baseCurrency, onNavigate, appendSnapshot, removeUserSnapshot }) {
   const { snapshots, userSnapshots } = data;
   const fx = MOCK_DATA.fx;
   const cat = CATEGORIES[categoryKey];

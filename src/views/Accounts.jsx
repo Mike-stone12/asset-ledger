@@ -3,7 +3,7 @@ import Icon from '../components/Icon';
 import { CATEGORIES } from '../data/categories';
 import { toBase, fmtNum } from '../lib/utils';
 
-export default function AccountsView({ data, baseCurrency, upsertAccount, archiveAccount, onNavigate }) {
+export default function AccountsView({ data, baseCurrency, upsertAccount, archiveAccount, deleteAccount, onNavigate }) {
   const { accounts, snapshots } = data;
   const [editingId, setEditingId] = React.useState(null);
   const [draft, setDraft] = React.useState({ name: '', category: 'cash', currency: 'CNY' });
@@ -59,6 +59,17 @@ export default function AccountsView({ data, baseCurrency, upsertAccount, archiv
   const toggleArchive = (a) => {
     archiveAccount(a.id, !a.archived);
     showToast(a.archived ? `已恢复：${a.name}` : `已归档：${a.name}`);
+  };
+
+  const handleDelete = (a) => {
+    const entryCount = snapshots.reduce((acc, s) =>
+      acc + (s.entries.filter(e => e.accountId === a.id).length), 0);
+    const msg = entryCount > 0
+      ? `确定要永久删除「${a.name}」吗？\n\n会同时删掉历史快照里该账户的 ${entryCount} 条记录，不可恢复。\n\n如只是暂时不用，建议使用"归档"而不是删除。`
+      : `确定要删除「${a.name}」吗？`;
+    if (!confirm(msg)) return;
+    deleteAccount(a.id);
+    showToast(`✓ 已删除：${a.name}`);
   };
 
   return (
@@ -178,9 +189,12 @@ export default function AccountsView({ data, baseCurrency, upsertAccount, archiv
                 <button className="btn-ghost" onClick={() => startEdit(a)} title="编辑">
                   <Icon name="sparkles" size={12} /> 编辑
                 </button>
-                <button className="btn-ghost" onClick={() => toggleArchive(a)} title={a.archived ? '恢复' : '归档'}>
+                <button className="btn-ghost" onClick={() => toggleArchive(a)} title={a.archived ? '恢复' : '归档（隐藏但保留历史）'}>
                   <Icon name={a.archived ? 'refresh' : 'archive'} size={12} />
                   {a.archived ? '恢复' : '归档'}
+                </button>
+                <button className="btn-ghost danger" onClick={() => handleDelete(a)} title="永久删除（含历史）">
+                  <Icon name="trash" size={12} /> 删除
                 </button>
               </div>
             </div>
