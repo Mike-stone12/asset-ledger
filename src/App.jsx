@@ -170,21 +170,40 @@ export default function App() {
     return { sha: r.sha, count: remoteSnaps.length };
   }, [githubConfig, githubToken, userAccounts]);
 
+  const pushLockRef = React.useRef(Promise.resolve());
   const githubPush = React.useCallback(async (commitMessage, overrides = {}) => {
-    const existing = await githubFetchContents({ ...githubConfig, token: githubToken });
-    const sha = existing.notFound ? undefined : existing.sha;
-
     const snapsToPush = overrides.userSnapshots ?? userSnapshots;
     const accsToPush = overrides.userAccounts ?? userAccounts;
     const payload = JSON.stringify({ updatedAt: new Date().toISOString(), userSnapshots: snapsToPush, userAccounts: accsToPush }, null, 2);
 
-    const res = await githubPutContents({
-      ...githubConfig,
-      token: githubToken,
-      content: payload,
-      sha,
-      message: commitMessage,
+    const attempt = async () => {
+      // Always re-fetch the latest sha right before PUT so concurrent pushes
+      // don't collide on a stale one.
+      const existing = await githubFetchContents({ ...githubConfig, token: githubToken });
+      const sha = existing.notFound ? undefined : existing.sha;
+      return await githubPutContents({
+        ...githubConfig,
+        token: githubToken,
+        content: payload,
+        sha,
+        message: commitMessage,
+      });
+    };
+
+    // Serialize pushes so two in-flight calls don't race on SHA.
+    const prior = pushLockRef.current;
+    const run = prior.catch(() => {}).then(async () => {
+      try {
+        return await attempt();
+      } catch (e) {
+        // 409 = stale SHA (remote changed mid-flight). Retry once with fresh SHA.
+        if (String(e.message || '').includes('409')) return await attempt();
+        throw e;
+      }
     });
+    pushLockRef.current = run;
+    const res = await run;
+
     const syncedBytes = JSON.stringify({ userSnapshots: snapsToPush, userAccounts: accsToPush });
     localStorage.setItem('ledger.lastPushAt', new Date().toISOString());
     localStorage.setItem('ledger.lastSyncedState', syncedBytes);
