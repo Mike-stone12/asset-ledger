@@ -365,6 +365,8 @@ input, select { font-family: inherit; color: inherit; }
 }
 .amount-cell:hover, .amount-cell.active { background: var(--bg-elev-2); }
 .amount-cell.active { box-shadow: inset 0 0 0 1px var(--pos); }
+.amount-cell.placeholder { opacity: 0.8; }
+.amount-cell.placeholder:hover { opacity: 1; }
 .amount-cell-stack { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
 .amount-cell .fx-sub { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
 .amount-cell .amount-edit-hint { opacity: 0; color: var(--text-dim); transition: opacity 0.15s; }

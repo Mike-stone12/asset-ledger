@@ -44,7 +44,25 @@ function CategoryImpl({ data, categoryKey, baseCurrency, onNavigate, appendSnaps
   const latest = snapshots[snapshots.length - 1];
   const prev = snapshots[snapshots.length - 2];
 
-  const accountsInCat = latest.entries.filter(e => e.category === categoryKey);
+  // Start with entries from the latest snapshot in this category.
+  // Then fold in any library accounts of this category that have NOT been
+  // recorded yet — so the category page reflects the account library, not
+  // just historical snapshot data. Placeholders get amount=0 and can be
+  // edited to create their first entry.
+  const entriesInCat = latest.entries.filter(e => e.category === categoryKey);
+  const entryIds = new Set(entriesInCat.map(e => e.accountId));
+  const libraryAccountsInCat = (data.activeAccounts || []).filter(a => a.category === categoryKey && !entryIds.has(a.id));
+  const accountsInCat = [
+    ...entriesInCat,
+    ...libraryAccountsInCat.map(a => ({
+      accountId: a.id,
+      name: a.name,
+      category: a.category,
+      currency: a.currency,
+      amount: 0,
+      _placeholder: true,
+    })),
+  ];
   const prevLookup = prev ? Object.fromEntries(prev.entries.map(e => [e.accountId, e])) : {};
 
   const todayNotes = new Map();
@@ -76,7 +94,7 @@ function CategoryImpl({ data, categoryKey, baseCurrency, onNavigate, appendSnaps
 
   const startEdit = (a) => {
     setEditingId(a.accountId);
-    setEditAmount(String(a.amount));
+    setEditAmount(a._placeholder ? '' : String(a.amount));
     setEditComment(todayNotes.get(a.accountId)?.comment || '');
     setTimeout(() => inputRef.current?.focus(), 0);
   };
@@ -86,7 +104,16 @@ function CategoryImpl({ data, categoryKey, baseCurrency, onNavigate, appendSnaps
     const n = parseFloat(editAmount);
     if (!isFinite(n) || n < 0) return;
     const baseSnap = (userSnapshots.find(s => s.date === today)) || latest;
-    const entries = baseSnap.entries.map(e => e.accountId === a.accountId ? { ...e, amount: n } : e);
+    const existsInBase = baseSnap.entries.some(e => e.accountId === a.accountId);
+    const entries = existsInBase
+      ? baseSnap.entries.map(e => e.accountId === a.accountId ? { ...e, amount: n } : e)
+      : [...baseSnap.entries, {
+          accountId: a.accountId,
+          name: a.name,
+          category: a.category,
+          currency: a.currency,
+          amount: n,
+        }];
     const existingNotes = (baseSnap.notes || []).filter(x => x.accountId !== a.accountId);
     const newNote = {
       accountId: a.accountId,
@@ -255,23 +282,31 @@ function CategoryImpl({ data, categoryKey, baseCurrency, onNavigate, appendSnaps
                 </div>
                 <div className="col-currency mono muted">{a.currency}</div>
                 <div className="r">
-                  <button className={`amount-cell ${isEditing ? 'active' : ''}`} onClick={() => isEditing ? cancelEdit() : startEdit(a)} title="点击修改金额">
+                  <button className={`amount-cell ${isEditing ? 'active' : ''} ${a._placeholder ? 'placeholder' : ''}`} onClick={() => isEditing ? cancelEdit() : startEdit(a)} title={a._placeholder ? '点击录入初始金额' : '点击修改金额'}>
                     <div className="amount-cell-stack">
-                      <span className="mono strong">{symbol}{fmtNum(fromBase(a.amountBase, baseCurrency))}</span>
-                      {a.currency !== baseCurrency && (
-                        <span className="mono fx-sub">{a.currency} {fmtNum(a.amount)}</span>
-                      )}
+                      {a._placeholder
+                        ? <span className="mono muted">点击录入</span>
+                        : <>
+                            <span className="mono strong">{symbol}{fmtNum(fromBase(a.amountBase, baseCurrency))}</span>
+                            {a.currency !== baseCurrency && (
+                              <span className="mono fx-sub">{a.currency} {fmtNum(a.amount)}</span>
+                            )}
+                          </>
+                      }
                     </div>
                     <span className="amount-edit-hint"><Icon name="sparkles" size={11} /></span>
                   </button>
                 </div>
-                <div className="r mono muted">{a.pct.toFixed(1)}%</div>
+                <div className="r mono muted">{a._placeholder ? '—' : `${a.pct.toFixed(1)}%`}</div>
                 <div className="r">
-                  <span className={`mono ${a.delta >= 0 ? 'text-pos' : 'text-neg'}`}>
-                    {a.delta >= 0 ? '+' : '−'}{symbol}{fmtNum(Math.abs(fromBase(a.delta, baseCurrency)))}
-                  </span>
+                  {a._placeholder
+                    ? <span className="mono muted">—</span>
+                    : <span className={`mono ${a.delta >= 0 ? 'text-pos' : 'text-neg'}`}>
+                        {a.delta >= 0 ? '+' : '−'}{symbol}{fmtNum(Math.abs(fromBase(a.delta, baseCurrency)))}
+                      </span>
+                  }
                 </div>
-                <div><Sparkline values={a.series} positive={a.delta >= 0} width={100} height={24} /></div>
+                <div>{a._placeholder ? <span className="mono muted">—</span> : <Sparkline values={a.series} positive={a.delta >= 0} width={100} height={24} />}</div>
                 <div>
                   <button className="btn-icon-ghost" onClick={() => !isEditing && setExpandedId(isExpanded ? null : a.accountId)}>
                     <Icon name="chevron_down" size={14} className={`chev ${isExpanded ? 'open' : ''}`} />
